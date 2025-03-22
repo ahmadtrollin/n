@@ -12,6 +12,10 @@ local altimage = Instance.new("ImageLabel")
 local alttext = Instance.new("TextLabel")
 local loadimg = Instance.new("ImageLabel")
 local COREGUI = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local flingTargets = {}
 ScreenGui.Parent = COREGUI
 ImageLabel.Parent = ScreenGui
 ImageLabel.Active = true
@@ -713,62 +717,78 @@ local function VXNV_fake_script()
 		end,
 		["fling"] = function(...)
 			local args = {...}
-			local position = workspace[game:GetService("Players").LocalPlayer.Name].HumanoidRootPart.CFrame or workspace[game:GetService("Players").LocalPlayer.Name].Torso.CFrame
-			local targetInput = tostring(args[1]):lower()
-			local players = game:GetService("Players"):GetPlayers()
-			local localPlayer = game:GetService("Players").LocalPlayer
-			local targetPlayer = nil
-			if #args==0 then
-				-- turns to freefling
-			else
-				if targetInput == "random" then
-					local eligiblePlayers = {}
-					for _, player in ipairs(players) do
-						if player ~= localPlayer then
-							table.insert(eligiblePlayers, player)
-						end
-					end
-					if #eligiblePlayers > 0 then
-						targetPlayer = eligiblePlayers[math.random(1, #eligiblePlayers)]
-					end
-				else
-					for _, player in ipairs(players) do
-						if player.Name:lower() == targetInput or player.DisplayName:lower() == targetInput then
-							targetPlayer = player
-							break
-						end
-					end
-					if not targetPlayer then
-						for _, player in ipairs(players) do
-							if player.Name:lower():sub(1, #targetInput) == targetInput or player.DisplayName:lower():sub(1, #targetInput) == targetInput then
-								targetPlayer = player
-								break
-							end
-						end
+			local position = workspace[LocalPlayer.Name].HumanoidRootPart.CFrame
+			local targetInput = tostring(args[1] or ""):lower()
+			local players = Players:GetPlayers()
+			local targetPlayers = {}
+
+			if targetInput == "all" or targetInput:sub(1, 6) == "all e:" then
+				local excludedUser = targetInput:sub(7):lower()
+				for _, player in ipairs(players) do
+					if player ~= LocalPlayer and (excludedUser == "" or not player.Name:lower():find(excludedUser)) then
+						table.insert(targetPlayers, player)
 					end
 				end
-				local Thrust = Instance.new('BodyThrust', player.Character.HumanoidRootPart or player.Torso)
-				Thrust.Force = Vector3.new(9999,9999,9999)
-				Thrust.Name = "AhmadFEAdminBT"
-				repeat
-					if Thrust then
-						player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
-						Thrust.Location = targetPlayer.Character.HumanoidRootPart.Position
-						game:FindService("RunService").Heartbeat:wait()
+			elseif targetInput:sub(1, 5) == "team " or targetInput:sub(1, 7) == "team e:" then
+				local teamName = targetInput:sub(6)
+				local excludedUser = ""
+				if targetInput:sub(1, 7) == "team e:" then
+					local parts = targetInput:split(" ")
+					teamName = parts[2]
+					excludedUser = parts[3] or ""
+				end
+				for _, player in ipairs(players) do
+					if player.Team and player.Team.Name:lower() == teamName:lower() and (excludedUser == "" or not player.Name:lower():find(excludedUser)) then
+						table.insert(targetPlayers, player)
 					end
-				until not targetPlayer.Character:FindFirstChild("Head")
-				local profilePicture = "https://www.roblox.com/avatar-thumbnail/image?userId="..targetPlayer.UserId.."&width=150&height=150&format=png"
-				notifmodule.notif("Flinging "..targetPlayer..".", true, "info", profilePicture, "Fling")
-				task.wait(5)
-				Thrust:Destroy()
-				if not Thrust then
-					if workspace[game:GetService("Players").LocalPlayer.Name].HumanoidRootPart then
-						workspace[game:GetService("Players").LocalPlayer.Name].HumanoidRootPart.CFrame = position
-					else
-						workspace[game:GetService("Players").LocalPlayer.Name].Torso.CFrame = position
+				end
+			elseif targetInput == "random" then
+				local eligiblePlayers = {}
+				for _, player in ipairs(players) do
+					if player ~= LocalPlayer then
+						table.insert(eligiblePlayers, player)
+					end
+				end
+				if #eligiblePlayers > 0 then
+					table.insert(targetPlayers, eligiblePlayers[math.random(1, #eligiblePlayers)])
+				end
+			else
+				for _, player in ipairs(players) do
+					if player.Name:lower():find(targetInput) or player.DisplayName:lower():find(targetInput) then
+						table.insert(targetPlayers, player)
 					end
 				end
 			end
+
+			for _, target in ipairs(targetPlayers) do
+				if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+					local hrp = target.Character.HumanoidRootPart
+					local thrust = Instance.new("BodyThrust", hrp)
+					thrust.Force = Vector3.new(99999, 99999, 99999)
+					thrust.Name = "FlingEffect"
+
+					flingTargets[target] = thrust -- Store for unfling
+
+					spawn(function()
+						while thrust.Parent do
+							hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(9999), 0) -- Super fast spin
+							RunService.Heartbeat:Wait()
+						end
+					end)
+
+					local profilePicture = "https://www.roblox.com/avatar-thumbnail/image?userId="..target.UserId.."&width=150&height=150&format=png"
+					notifmodule.notif("Flinging "..target.Name..".", true, "info", profilePicture, "Fling")
+				end
+			end
+		end,
+		["unfling"] = function()
+			for target, thrust in pairs(flingTargets) do
+				if thrust and thrust.Parent then
+					thrust:Destroy()
+				end
+			end
+			flingTargets = {}
+			notifmodule.notif("Stopped all flings.", false, "info", "", "Unfling")
 		end,
 		["r6"] = function()
 			local plr = game:GetService("Players").LocalPlayer
